@@ -22,7 +22,8 @@ class ExampleUnitTest {
 
         val state = exampleViewModel.state.value
         assertTrue(state is ExampleViewModel.State.Ready)
-        val viewObject = state.pages[0]
+        assertEquals(PAGE_SIZE, state.pages.size)
+        val viewObject = state.pages[0] as ViewObject
         assertEquals(0, viewObject.id)
     }
 
@@ -57,10 +58,33 @@ class ExampleUnitTest {
 
     @Test
     fun `load second page`() {
-        val firstPageLoaded = exampleViewModel.state.value
-        assertTrue(firstPageLoaded is ExampleViewModel.State.Ready)
-        firstPageLoaded.pages
+        val firstPageLoaded = exampleViewModel.assertReady()
+        loadingProxy.stopLoading()
+        val firstPage = firstPageLoaded.pages
+        for (i in 0 until firstPage.size) {
+            firstPage[i]
+            exampleViewModel.userReached(i)
+        }
+
+        val secondPageLoading = exampleViewModel.assertReady()
+        val lastItem = secondPageLoading.pages[secondPageLoading.pages.size - 1]
+        assertTrue(lastItem is PageLoadingIntem)
+        loadingProxy.resumeLoading()
+
+        val secondPageLoaded = exampleViewModel.assertReady()
+        val itemFromSecondPage = secondPageLoaded.pages[firstPage.size + 1] as ViewObject
+        assertEquals(PAGE_SIZE + 1, itemFromSecondPage.id)
+        assertEquals(PAGE_SIZE * 2, secondPageLoaded.pages.size)
     }
+}
+
+fun ExampleViewModel.assertReady(): ExampleViewModel.State.Ready {
+    val state = this.state.value
+    assertTrue(
+        state is ExampleViewModel.State.Ready,
+        "state is expected to be Ready, but it $state"
+    )
+    return state
 }
 
 class FakeDataSource(itemsCount: Int) : DataSource {

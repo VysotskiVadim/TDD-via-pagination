@@ -7,7 +7,8 @@ import kotlin.test.assertTrue
 
 class ExampleUnitTest {
 
-    val fakeDataSource = FakeDataSource(52)
+    private val availableItems = PAGE_SIZE * 3 + PAGE_SIZE / 2
+    val fakeDataSource = FakeDataSource(availableItems)
     val loadingProxy = DataSourceLoadingProxy(fakeDataSource)
     val scope = CoroutineScope(Job() + Dispatchers.Unconfined)
     val exampleViewModel = ExampleViewModel(scope, loadingProxy)
@@ -16,6 +17,7 @@ class ExampleUnitTest {
     @Test
     fun `first page`() {
         loadingProxy.stopLoading()
+        exampleViewModel.loadFirstPage()
         val loadingState = exampleViewModel.state.value
         assertTrue(loadingState is ExampleViewModel.State.FirstPageLoading)
         loadingProxy.resumeLoading()
@@ -30,6 +32,7 @@ class ExampleUnitTest {
     @Test
     fun `retry error`() {
         fakeDataSource.setLoadingError()
+        exampleViewModel.loadFirstPage()
         val state = exampleViewModel.state.value
         assertTrue(state is ExampleViewModel.State.FirstPageLoadingError, "state is $state")
 
@@ -49,7 +52,7 @@ class ExampleUnitTest {
     @Test
     fun `cancel first page loading`() {
         loadingProxy.stopLoading()
-        exampleViewModel.state.value
+        exampleViewModel.loadFirstPage()
         scope.cancel() // user leave screen
         loadingProxy.resumeLoading()
         val state = exampleViewModel.state.value
@@ -58,33 +61,103 @@ class ExampleUnitTest {
 
     @Test
     fun `load second page`() {
+        exampleViewModel.loadFirstPage()
         val firstPageLoaded = exampleViewModel.assertReady()
         loadingProxy.stopLoading()
-        val firstPage = firstPageLoaded.pages
-        for (i in 0 until firstPage.size) {
-            firstPage[i]
-            exampleViewModel.userReached(i)
-        }
+        exampleViewModel.scrollToTheNextPage()
 
-        val secondPageLoading = exampleViewModel.assertReady()
-        val lastItem = secondPageLoading.pages[secondPageLoading.pages.size - 1]
-        assertTrue(lastItem is PageLoadingIntem)
+        exampleViewModel.assertLastItemIsLoading()
         loadingProxy.resumeLoading()
 
-        val secondPageLoaded = exampleViewModel.assertReady()
-        val itemFromSecondPage = secondPageLoaded.pages[firstPage.size + 1] as ViewObject
-        assertEquals(PAGE_SIZE + 1, itemFromSecondPage.id)
-        assertEquals(PAGE_SIZE * 2, secondPageLoaded.pages.size)
+        exampleViewModel.assertSecondPageLoaded(firstPageLoaded)
+    }
+
+    @Test
+    fun `second page loading error with retry`() {
+        exampleViewModel.loadFirstPage()
+        val firstPageLoaded = exampleViewModel.assertReady()
+        fakeDataSource.setLoadingError()
+
+        exampleViewModel.scrollToTheNextPage()
+
+        val errorState = exampleViewModel.assertReady()
+        assertEquals(PageLoadingError, errorState.pages.last())
+
+        fakeDataSource.setCorrectResult()
+        loadingProxy.stopLoading()
+        exampleViewModel.retryNextPageLoading()
+        exampleViewModel.assertLastItemIsLoading()
+        loadingProxy.resumeLoading()
+        exampleViewModel.assertSecondPageLoaded(firstPageLoaded)
+    }
+
+
+    @Test
+    fun `load third page`() {
+        with(exampleViewModel) {
+            loadFirstPage()
+            scrollToTheNextPage()
+            scrollToTheNextPage()
+        }
+        val items = exampleViewModel.assertReady().pages.map { (it as? ViewObject)?.id }
+        assertEquals(
+            (0 until (PAGE_SIZE * 3)).toList(),
+            items
+        )
+    }
+
+    @Test
+    fun `load last page`() {
+        with(exampleViewModel) {
+            loadFirstPage()
+            scrollToTheNextPage()
+            scrollToTheNextPage()
+            scrollToTheNextPage()
+        }
+        val fourPagesLoaded = exampleViewModel.assertReady()
+        val items = fourPagesLoaded.pages.map { (it as? ViewObject)?.id }
+        assertEquals(
+            (0 until availableItems).toList() + listOf(null),
+            items
+        )
+        assertTrue(fourPagesLoaded.pages.last() is LastPageMarker)
     }
 }
 
-fun ExampleViewModel.assertReady(): ExampleViewModel.State.Ready {
+private fun ExampleViewModel.loadFirstPage() {
+    state.value // trigger lazy loading
+}
+
+private fun ExampleViewModel.assertSecondPageLoaded(firstPageLoaded: ExampleViewModel.State.Ready) {
+    val secondPageLoaded = assertReady()
+    val itemFromSecondPage =
+        secondPageLoaded.pages[firstPageLoaded.pages.size + 1] as ViewObject
+    assertEquals(PAGE_SIZE + 1, itemFromSecondPage.id)
+    assertEquals(PAGE_SIZE * 2, secondPageLoaded.pages.size)
+}
+
+private fun ExampleViewModel.assertLastItemIsLoading() {
+    val nextPageLoadingState = this.assertReady()
+    val lastItem = nextPageLoadingState.pages[nextPageLoadingState.pages.size - 1]
+    assertTrue(lastItem is PageLoadingItem, "last item isn't loading: $lastItem")
+}
+
+private fun ExampleViewModel.assertReady(): ExampleViewModel.State.Ready {
     val state = this.state.value
     assertTrue(
         state is ExampleViewModel.State.Ready,
         "state is expected to be Ready, but it $state"
     )
     return state
+}
+
+private fun ExampleViewModel.scrollToTheNextPage() {
+    val somethingIsLoaded = assertReady()
+    val currentPage = somethingIsLoaded.pages
+    for (i in 0 until currentPage.size) {
+        currentPage[i]
+        this.userReached(i)
+    }
 }
 
 class FakeDataSource(itemsCount: Int) : DataSource {

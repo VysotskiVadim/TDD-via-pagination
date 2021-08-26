@@ -144,7 +144,7 @@ data class Page<T>(
 
 data class Model(val id: Int)
 
-interface ListItem
+sealed interface ListItem
 data class ViewObject(val id: Int) : ListItem
 object PageLoadingItem : ListItem
 object PageLoadingError : ListItem

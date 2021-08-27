@@ -1,5 +1,6 @@
 package dev.vadzimv.pagination.example
 
+import dev.vadzimv.pagination.example.pagination.Page
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

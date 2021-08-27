@@ -1,38 +1,46 @@
-package dev.vadzimv.pagination.example
+package dev.vadzimv.pagination.example.pagination
 
-import android.media.browse.MediaBrowser
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.TextView
 import androidx.recyclerview.widget.AsyncListDiffer
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
+import dev.vadzimv.pagination.example.R
 
-class PagedAdapter(
+abstract class BasePagedAdapter<T>(
     private val retry: () -> Unit,
     private val userReached: (index: Int) -> Unit
 ) : RecyclerView.Adapter<ListItemViewHolder>() {
-
     private val differ =
-        AsyncListDiffer(this, object : DiffUtil.ItemCallback<ListItem>() {
-            override fun areItemsTheSame(oldItem: ListItem, newItem: ListItem): Boolean {
+        AsyncListDiffer(this, object : DiffUtil.ItemCallback<PagedListItem<T>>() {
+            override fun areItemsTheSame(
+                oldItem: PagedListItem<T>,
+                newItem: PagedListItem<T>
+            ): Boolean {
                 return oldItem == newItem
             }
 
-            override fun areContentsTheSame(oldItem: ListItem, newItem: ListItem): Boolean {
+            override fun areContentsTheSame(
+                oldItem: PagedListItem<T>,
+                newItem: PagedListItem<T>
+            ): Boolean {
                 return oldItem == newItem
             }
         })
 
     override fun getItemViewType(position: Int): Int {
-        return when (differ.currentList[position]) {
+        return when (val item = differ.currentList[position]) {
             LastPageMarker -> 1
             PageLoadingError -> 2
             PageLoadingItem -> 3
-            is ViewObject -> 4
+            is ListSpecificItem -> getItemType(item.content)
         }
+    }
+
+    protected open fun getItemType(content: T): Int {
+        return 4
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ListItemViewHolder {
@@ -40,10 +48,14 @@ class PagedAdapter(
             1 -> LastPageMarkerViewHolder.create(parent)
             3 -> PageLoadingViewHolder.create(parent)
             2 -> LoadingErrorItemViewHolder.create(parent)
-            4 -> ViewObjectViewHolder.create(parent)
-            else -> error("this should never happen")
+            else -> createCustomViewHolder(parent, viewType)
         }
     }
+
+    protected abstract fun createCustomViewHolder(
+        parent: ViewGroup,
+        viewType: Int
+    ): ListItemViewHolder
 
     override fun onBindViewHolder(holder: ListItemViewHolder, position: Int) {
         userReached(position)
@@ -55,21 +67,25 @@ class PagedAdapter(
             }
             is PageLoadingViewHolder -> {
             }
-            is ViewObjectViewHolder -> {
-                val model = differ.currentList[position] as ViewObject
-                holder.description.text = model.id.toString()
-            }
+            else -> bindCustomViewHolder(
+                holder,
+                (differ.currentList[position] as ListSpecificItem).content
+            )
         }
     }
+
+    protected abstract fun bindCustomViewHolder(holder: ListItemViewHolder, item: T)
 
     override fun getItemCount(): Int {
         return differ.currentList.size
     }
 
-    fun submit(pagedList: PagedList) {
+    fun submit(pagedList: PagedList<T>) {
         differ.submitList(pagedList)
     }
 }
+
+abstract class ListItemViewHolder(view: View) : RecyclerView.ViewHolder(view)
 
 class LastPageMarkerViewHolder(view: View) : ListItemViewHolder(view) {
     companion object {
@@ -102,18 +118,3 @@ class LoadingErrorItemViewHolder(view: View) : ListItemViewHolder(view) {
             )
     }
 }
-
-
-class ViewObjectViewHolder(view: View) : ListItemViewHolder(view) {
-
-    val description = view.findViewById<TextView>(R.id.objectDescription)
-
-    companion object {
-        fun create(parent: ViewGroup) =
-            ViewObjectViewHolder(
-                LayoutInflater.from(parent.context).inflate(R.layout.item_object, parent, false)
-            )
-    }
-}
-
-sealed class ListItemViewHolder(view: View) : RecyclerView.ViewHolder(view)

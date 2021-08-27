@@ -23,7 +23,7 @@ class MainActivity : AppCompatActivity() {
             vmWrapper.viewModel.retryFirstPageLoading()
         }
         with(recycler) {
-            adapter = PagedAdapter(
+            adapter = ExamplePagedAdapter(
                 retry = { vmWrapper.viewModel.retryNextPageLoading() },
                 userReached = { vmWrapper.viewModel.userReached(it) }
             )
@@ -57,7 +57,7 @@ class MainActivity : AppCompatActivity() {
                 loading.visibility = View.GONE
                 with(recycler) {
                     visibility = View.VISIBLE
-                    (adapter as PagedAdapter).submit(state.pages)
+                    (adapter as ExamplePagedAdapter).submit(state.pages)
                 }
             }
         }

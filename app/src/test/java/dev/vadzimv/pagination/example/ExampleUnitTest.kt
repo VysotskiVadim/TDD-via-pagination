@@ -1,5 +1,6 @@
 package dev.vadzimv.pagination.example
 
+import dev.vadzimv.pagination.example.pagination.*
 import kotlinx.coroutines.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,7 +26,7 @@ class ExampleUnitTest {
         val state = exampleViewModel.state.value
         assertTrue(state is ExampleViewModel.State.Ready)
         assertEquals(PAGE_SIZE, state.pages.size)
-        val viewObject = state.pages[0] as ViewObject
+        val viewObject = state.pages.getContent(0)
         assertEquals(0, viewObject.id)
     }
 
@@ -99,7 +100,7 @@ class ExampleUnitTest {
             scrollToTheNextPage()
             scrollToTheNextPage()
         }
-        val items = exampleViewModel.assertReady().pages.map { (it as? ViewObject)?.id }
+        val items = exampleViewModel.assertReady().pages.map { (it as? ListSpecificItem)?.content?.id }
         assertEquals(
             (0 until (PAGE_SIZE * 3)).toList(),
             items
@@ -115,7 +116,7 @@ class ExampleUnitTest {
             scrollToTheNextPage()
         }
         val fourPagesLoaded = exampleViewModel.assertReady()
-        val items = fourPagesLoaded.pages.map { (it as? ViewObject)?.id }
+        val items = fourPagesLoaded.pages.map { (it as? ListSpecificItem)?.content?.id }
         assertEquals(
             (0 until availableItems).toList() + listOf(null),
             items
@@ -131,9 +132,14 @@ private fun ExampleViewModel.loadFirstPage() {
 private fun ExampleViewModel.assertSecondPageLoaded(firstPageLoaded: ExampleViewModel.State.Ready) {
     val secondPageLoaded = assertReady()
     val itemFromSecondPage =
-        secondPageLoaded.pages[firstPageLoaded.pages.size + 1] as ViewObject
+        secondPageLoaded.pages.getContent(firstPageLoaded.pages.size + 1)
     assertEquals(PAGE_SIZE + 1, itemFromSecondPage.id)
     assertEquals(PAGE_SIZE * 2, secondPageLoaded.pages.size)
+}
+
+private fun <T> PagedList<T>.getContent(index: Int): T {
+    val item = get(index) as ListSpecificItem<T>
+    return item.content
 }
 
 private fun ExampleViewModel.assertLastItemIsLoading() {
@@ -160,7 +166,7 @@ private fun ExampleViewModel.scrollToTheNextPage() {
     }
 }
 
-class FakeDataSource(itemsCount: Int) : DataSource {
+class FakeDataSource(itemsCount: Int) : PageDataSource<Model> {
 
     private var error = false
 
@@ -168,12 +174,12 @@ class FakeDataSource(itemsCount: Int) : DataSource {
         Model(it)
     }
 
-    override suspend fun getPage(request: DataSource.GetPageRequest): DataSourceResult {
+    override suspend fun getPage(request: PageDataSource.GetPageRequest): PageDataSourceResult<Model> {
         if (error) {
-            return DataSourceResult.Error
+            return PageDataSourceResult.Error
         }
         val page = content.getPage(request.offset, request.pageSize)
-        return DataSourceResult.Success(page)
+        return PageDataSourceResult.Success(page)
     }
 
     fun setLoadingError() {
@@ -185,7 +191,7 @@ class FakeDataSource(itemsCount: Int) : DataSource {
     }
 }
 
-class DataSourceLoadingProxy(private val wrapped: DataSource) : DataSource {
+class DataSourceLoadingProxy(private val wrapped: PageDataSource<Model>) : PageDataSource<Model> {
 
     private var waitHandle: CompletableDeferred<Unit>? = null
 
@@ -193,7 +199,7 @@ class DataSourceLoadingProxy(private val wrapped: DataSource) : DataSource {
         waitHandle = CompletableDeferred()
     }
 
-    override suspend fun getPage(request: DataSource.GetPageRequest): DataSourceResult {
+    override suspend fun getPage(request: PageDataSource.GetPageRequest): PageDataSourceResult<Model> {
         waitHandle?.await()
         return wrapped.getPage(request)
     }

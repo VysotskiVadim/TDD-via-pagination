@@ -1,21 +1,24 @@
 package dev.vadzimv.pagination.example
 
+import dev.vadzimv.pagination.example.pagination.PageDataSourceResult
+import dev.vadzimv.pagination.example.pagination.PageDataSource
+import dev.vadzimv.pagination.example.pagination.Page
 import kotlinx.coroutines.delay
 import kotlin.random.Random
 
-class FakeDataSource(itemsCount: Int) : DataSource {
+class FakeDataSource(itemsCount: Int) : PageDataSource<Model> {
 
     private val content = (0 until itemsCount).map {
         Model(it)
     }
 
-    override suspend fun getPage(request: DataSource.GetPageRequest): DataSourceResult {
+    override suspend fun getPage(request: PageDataSource.GetPageRequest): PageDataSourceResult<Model> {
         delay(1000)
         return if (Random.Default.nextBoolean()) {
             val page = content.getPage(request.offset, request.pageSize)
-            DataSourceResult.Success(page)
+            PageDataSourceResult.Success(page)
         } else {
-            DataSourceResult.Error
+            PageDataSourceResult.Error
         }
     }
 
